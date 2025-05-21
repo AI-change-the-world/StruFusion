@@ -1,0 +1,57 @@
+spring:
+  autoconfigure:
+      exclude:
+        - org.springframework.ai.autoconfigure.chat.client.ChatClientAutoConfiguration
+  mvc:
+    async:
+      request-timeout: 600000
+  application:
+    name: strufusion
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
+
+  cloud:
+    nacos:
+      server-addr: 127.0.0.1:8848
+      username: admin
+      password: admin
+      config:
+        import-check:
+          enabled: false
+        namespace: public
+        group: STU_FUSION
+        file-extension: yaml
+        ext-config:
+          - data-id: DB
+            group: STU_FUSION
+            refresh: true
+          - data-id: OPENAI
+            group: STU_FUSION
+            refresh: true
+  config:
+    import:
+      - nacos:DB?group=STU_FUSION
+      - nacos:OPENAI?group=STU_FUSION
+
+mybatis-plus:
+  global-config:
+    db-config:
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      logic-delete-field: isDeleted
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+
+# http://localhost:8080/strufusion/swagger-ui/index.html#/
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui
+
+server:
+  servlet:
+    context-path: /strufusion
