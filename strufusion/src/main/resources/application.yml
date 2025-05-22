@@ -1,7 +1,4 @@
 spring:
-  autoconfigure:
-      exclude:
-        - org.springframework.ai.autoconfigure.chat.client.ChatClientAutoConfiguration
   mvc:
     async:
       request-timeout: 600000

@@ -44,6 +44,6 @@ public class KBCustomContent {
   String contentType;
 
   // reference
-  @TableField(value = "reference")
+  @TableField(value = "ref")
   String reference;
 }

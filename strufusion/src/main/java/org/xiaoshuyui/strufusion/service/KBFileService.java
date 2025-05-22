@@ -1,70 +1,327 @@
 package org.xiaoshuyui.strufusion.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.xiaoshuyui.strufusion.common.SseResponse;
 import org.xiaoshuyui.strufusion.entity.KB;
+import org.xiaoshuyui.strufusion.entity.KBCustomContent;
+import org.xiaoshuyui.strufusion.entity.KBFile;
 import org.xiaoshuyui.strufusion.mapper.KBFileMapper;
 import org.xiaoshuyui.strufusion.mapper.KBMapper;
+import org.xiaoshuyui.strufusion.util.SseUtil;
 
 @Service
 public class KBFileService {
   private final KBFileMapper kbFileMapper;
   private final AiService aiService;
   private final KBMapper kbMapper;
+  private final KBCustomContentServiceImpl kbCustomContentService;
 
-  public KBFileService(KBFileMapper kbFileMapper, AiService aiService, KBMapper kbMapper) {
+  public KBFileService(
+      KBFileMapper kbFileMapper,
+      AiService aiService,
+      KBMapper kbMapper,
+      KBCustomContentServiceImpl kbCustomContentService) {
     this.kbFileMapper = kbFileMapper;
     this.aiService = aiService;
     this.kbMapper = kbMapper;
+    this.kbCustomContentService = kbCustomContentService;
   }
 
-  static String contentExtract =
-      """
-            你是信息抽取助手。
+  static String contentExtract = """
+      你是信息抽取助手。
 
-            下面给你一段字段定义，格式是 JSON 数组，数组里每个对象包含两个字段：
-            "name" 是字段中文名，
-            "alias" 是字段英文名。
+      下面给你一段字段定义，格式是 JSON 数组，数组里每个对象包含两个字段：
+      "name" 是字段中文名，
+      "alias" 是字段英文名。
 
-            字段定义：
-            {{fields_json}}
+      字段定义：
+      {{fields_json}}
 
-            请你根据字段定义，从下面这段文本中抽取对应字段的内容：
+      请你根据字段定义，从下面这段文本中抽取对应字段的内容：
 
-            文本：
-            {{text}}
+      文本：
+      {{text}}
 
-            请输出提取结果，每行格式为：
-            字段中文名；字段英文名；对应内容
+      请输出提取结果，每行格式为：
+      字段中文名；字段英文名；对应内容
 
-            如果文本中没有对应字段的内容，输出“无”。
+      如果文本中没有对应字段的内容，输出“无”。
 
-            ---
+      ---
 
-            示例：
-            字段定义：
-            [
-              {"name": "姓名", "alias": "name"},
-              {"name": "年龄", "alias": "age"}
-            ]
+      示例：
+      字段定义：
+      [
+        {"name": "姓名", "alias": "name"},
+        {"name": "年龄", "alias": "age"}
+      ]
 
-            文本：
-            张三，年龄28岁。
+      文本：
+      张三，年龄28岁。
 
-            输出：
-            姓名；name；张三
-            年龄；age；28岁
-                        """;
+      输出：
+      姓名；name；张三
+      年龄；age；28岁
+                  """;
+
+  static String intentRec = """
+      你是一个智能信息系统的助手，当前正在处理一个{{kb_name}}数据库,数据库主要功能是【{{kb_des}}】。
+
+      你会收到一个用户提问的内容，以及系统支持的字段列表，每个字段由“中文名”和“英文别名”组成。
+
+      你的任务是：
+      1. 找出问题中**涉及的字段**
+      2. 对于每个字段，尝试从提问中提取出明确的值（如“张三”、“2023年”、“5万元”等），如果没有提到具体值，则该字段的值为 `null`
+
+      ---
+
+      字段列表如下（格式为 JSON）：
+      {{fields_json}}
+
+      用户输入的问题是：
+      “{{user_input}}”
+
+      请你返回最相关的字段，每行一个，格式如下：
+
+      字段中文名；alias；content（可以为 null）
+
+      例如：
+      候选人姓名；name；张三
+      技能专长；skills；null
+
+      **注意：**
+      - 如果问题中包含“查询目标”（如某人的姓名、某个编号），请务必返回这个字段，并提取值
+      - 如果没有匹配字段，请仅返回：
+      无
+                  """;
+
+  static String chatPrompt = """
+      你是一个智能信息系统的助手，当前正在处理一个{{kb_name}}数据库,数据库主要功能是【{{kb_des}}】。
+
+      以下是用户的问题：
+      【{{question}}】
+
+      系统从数据库中查找到的相关内容如下（字段：内容）：
+      {{content}}
+
+      请根据这些信息，用简洁准确的语言回答用户的问题。如果信息不足，请直接说明。
+            """;
+
+  public String intentRecognition(String userInput, Long kbId) {
+    QueryWrapper<KB> queryWrapper = new QueryWrapper<>();
+    queryWrapper.eq("kb_id", kbId);
+    queryWrapper.eq("is_deleted", 0);
+    var kb = kbMapper.selectOne(queryWrapper);
+    if (kb == null) {
+      return "无";
+    }
+    return aiService.chat(
+        intentRec
+            .replace("{{fields_json}}", kb.getPoints())
+            .replace("{{user_input}}", userInput)
+            .replace("{{kb_name}}", kb.getName())
+            .replace("{{kb_des}}", kb.getDescription()));
+  }
+
+  public String intentRecognition(String userInput, KB kb) {
+    return aiService.chat(
+        intentRec
+            .replace("{{fields_json}}", kb.getPoints())
+            .replace("{{user_input}}", userInput)
+            .replace("{{kb_name}}", kb.getName())
+            .replace("{{kb_des}}", kb.getDescription()));
+  }
+
+  public void streamChat(
+      String message, Long kbId, SseEmitter emitter, SseResponse<String> response) {
+    response.setMessage("正在进行意图识别...");
+    SseUtil.sseSend(emitter, response);
+    QueryWrapper<KB> qw = new QueryWrapper<>();
+    qw.eq("kb_id", kbId);
+    qw.eq("is_deleted", 0);
+    var kb = kbMapper.selectOne(qw);
+    if (kb == null) {
+      response.setMessage("无效的意图，流程结束。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    String intent = intentRecognition(message, kb);
+    if (intent.equals("无")) {
+      response.setMessage("无效的意图，流程结束。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+    response.setMessage("意图识别完成，结果为" + intent + ", 正在进行内容提取...");
+    SseUtil.sseSend(emitter, response);
+    List<Map<String, Object>> fieldMap = parseFieldsFromModelOutput(intent);
+    if (fieldMap.isEmpty()) {
+      response.setMessage("无匹配字段，流程结束。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    QueryWrapper<KBCustomContent> queryWrapper = new QueryWrapper<>();
+    queryWrapper.eq("kb_id", kbId);
+    // for (var field : fieldMap) {
+    // queryWrapper.eq("kb_custom_content_name", field.get("name"));
+    // queryWrapper.eq("kb_custom_content_alias", field.get("alias"));
+    // if (!field.get("content").equals(null)) {
+    // queryWrapper.like("kb_custom_content_content", field.get("content"));
+    // }
+    // }
+    // 外层包一层 .and()，用于逻辑分组（可选）
+    queryWrapper.and(wrapper -> {
+      for (Map<String, Object> field : fieldMap) {
+        wrapper.or(orWrapper -> {
+          orWrapper.eq("kb_custom_content_name", field.get("name"))
+              .eq("kb_custom_content_alias", field.get("alias"));
+
+          if (field.get("content") != null) {
+            orWrapper.like("kb_custom_content_content", field.get("content"));
+          }
+        });
+      }
+    });
+    var kbCustomContentList = kbCustomContentService.list(queryWrapper);
+    if (kbCustomContentList.isEmpty()) {
+      response.setMessage("无匹配内容，流程结束。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    Set<Long> ids = new HashSet<>();
+    for (var kbCustomContent : kbCustomContentList) {
+      ids.add(kbCustomContent.getKbFileId());
+    }
+
+    List<Long> rangeIds = ids.stream().map(Long::valueOf).collect(Collectors.toList());
+
+    QueryWrapper<KBCustomContent> contentQueryWrapper = new QueryWrapper<>();
+    contentQueryWrapper.in("kb_file_id", rangeIds);
+    List<KBCustomContent> allContents = kbCustomContentService.list(contentQueryWrapper);
+
+    String content = toMarkdownTable(allContents);
+
+    String prompt = chatPrompt
+        .replace("{{kb_name}}", kb.getName())
+        .replace(
+            "{{kb_des}}",
+            kb.getDescription())
+        .replace("{{question}}", message)
+        .replace("{{content}}", content);
+    response.setMessage("内容提取完成，正在生成回答...");
+    SseUtil.sseSend(emitter, response);
+    aiService
+        .streamChat(prompt)
+        .doOnNext(
+            data -> {
+              response.setData(data);
+              SseUtil.sseSend(emitter, response);
+            })
+        .blockLast();
+  }
+
+  private String toMarkdownTable(List<KBCustomContent> dataList) {
+    // Step 1: 聚合所有列名（kb_custom_content_name）
+    Set<String> columnSet = new LinkedHashSet<>();
+    for (KBCustomContent item : dataList) {
+      columnSet.add(item.getName());
+    }
+    List<String> columns = new ArrayList<>(columnSet);
+
+    // Step 2: 按 id 聚合成 Map<id, Map<name, content>>
+    Map<Long, Map<String, String>> rowMap = new LinkedHashMap<>();
+    for (KBCustomContent item : dataList) {
+      rowMap
+          .computeIfAbsent(item.getId(), k -> new HashMap<>())
+          .put(item.getName(), item.getContent());
+    }
+
+    // Step 3: 构建 Markdown 表格
+    StringBuilder sb = new StringBuilder();
+
+    // Header
+    sb.append("|");
+    for (String col : columns) {
+      sb.append(" ").append(col).append(" |");
+    }
+    sb.append("\n|");
+    for (int i = 0; i < columns.size(); i++) {
+      sb.append("------|");
+    }
+
+    // Rows
+    for (Map<String, String> row : rowMap.values()) {
+      sb.append("\n|");
+      for (String col : columns) {
+        String cell = row.getOrDefault(col, "");
+        sb.append(" ").append(cell).append(" |");
+      }
+    }
+
+    return sb.toString();
+  }
+
+  private List<Map<String, Object>> parseFieldsFromModelOutput(String modelOutput) {
+    List<Map<String, Object>> result = new ArrayList<>();
+    String[] lines = modelOutput.split("\\r?\\n");
+
+    for (String line : lines) {
+      // 跳过空行或无效行
+      if (line.trim().isEmpty() || line.trim().equalsIgnoreCase("无")) {
+        continue;
+      }
+
+      String[] parts = line.split("；");
+      if (parts.length >= 2) {
+        Map<String, Object> fieldMap = new HashMap<>();
+        fieldMap.put("name", parts[0].trim());
+        fieldMap.put("alias", parts[1].trim());
+
+        // 支持可选的 content 字段，若没有则设为 null
+        if (parts.length >= 3 && !parts[2].trim().equalsIgnoreCase("null")) {
+          fieldMap.put("content", parts[2].trim());
+        } else {
+          fieldMap.put("content", null);
+        }
+
+        result.add(fieldMap);
+      }
+    }
+
+    return result;
+  }
 
   public String extract(String text, String fieldsJson) {
     String prompt = contentExtract.replace("{{fields_json}}", fieldsJson).replace("{{text}}", text);
     return aiService.chat(prompt);
   }
 
-  public String extract(Long kbId, String fileContent) throws Exception {
+  @Transactional
+  public void extract(Long kbId, String fileContent, String filename) throws Exception {
     QueryWrapper<KB> queryWrapper = new QueryWrapper<>();
     queryWrapper.eq("kb_id", kbId);
     queryWrapper.eq("is_deleted", 0);
+
     var kb = kbMapper.selectOne(queryWrapper);
     if (kb == null) {
       throw new Exception("知识库不存在");
@@ -72,7 +329,42 @@ public class KBFileService {
     if (kb.getPoints() == null) {
       throw new Exception("知识库没有定义字段");
     }
+    KBFile kbFile = new KBFile();
+    kbFile.setContent(fileContent);
+    kbFile.setKbId(kbId);
+    kbFile.setName(filename);
 
-    return extract(fileContent, kb.getPoints());
+    kbFileMapper.insert(kbFile);
+
+    String result = extract(fileContent, kb.getPoints());
+
+    List<KBCustomContent> customContentList = parseToCustomContent(result, kbFile.getId(), kbId);
+
+    kbCustomContentService.saveBatch(customContentList);
+  }
+
+  static Pattern pattern = Pattern.compile("^(.+?)；(.+?)；(.+)$", Pattern.MULTILINE);
+
+  private List<KBCustomContent> parseToCustomContent(String inputText, long kbFileId, long kbId) {
+    List<KBCustomContent> resultList = new ArrayList<>();
+
+    Matcher matcher = pattern.matcher(inputText);
+
+    while (matcher.find()) {
+      String name = matcher.group(1).trim();
+      String alias = matcher.group(2).trim();
+      String content = matcher.group(3).trim();
+
+      KBCustomContent contentObj = new KBCustomContent();
+      contentObj.setName(name);
+      contentObj.setAlias(alias);
+      contentObj.setContent(content);
+      contentObj.setKbId(kbId);
+      contentObj.setKbFileId(kbFileId);
+
+      resultList.add(contentObj);
+    }
+
+    return resultList;
   }
 }
