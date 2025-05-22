@@ -52,7 +52,7 @@ Future sse(
         onDone(request.responseText!);
       }
 
-      ss.sink.add("[DONE]");
+      // ss.sink.add("[DONE]");
     })
     ..send(jsonEncode(data)); // 发送请求体
 }
