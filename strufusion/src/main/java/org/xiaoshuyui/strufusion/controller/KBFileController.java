@@ -20,6 +20,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.xiaoshuyui.strufusion.common.Result;
 import org.xiaoshuyui.strufusion.common.SseResponse;
+import org.xiaoshuyui.strufusion.entity.DataWithThink;
 import org.xiaoshuyui.strufusion.service.KBFileService;
 import org.xiaoshuyui.strufusion.util.DocReader;
 import org.xiaoshuyui.strufusion.util.SseUtil;
@@ -47,6 +48,11 @@ public class KBFileController {
       e.printStackTrace();
       return Result.error("上传失败 " + e.getMessage());
     }
+  }
+
+  @GetMapping("/list/{kbId}")
+  public Result getFileList(@PathVariable("kbId") Long kbId) {
+    return Result.OK_data(kbFileService.list(kbId));
   }
 
   @Deprecated(since = "this is for test")
@@ -92,7 +98,8 @@ public class KBFileController {
   public SseEmitter streamChat(
       @RequestBody KBRequest request) {
     SseEmitter emitter = new SseEmitter(36000000L);
-    SseResponse<String> response = new SseResponse<>();
+    SseResponse<DataWithThink> response = new SseResponse<>();
+
     String uuid = UUID.randomUUID().toString();
     response.setUuid(uuid);
     Executors.newSingleThreadExecutor()

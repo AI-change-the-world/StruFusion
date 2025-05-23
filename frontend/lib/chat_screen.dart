@@ -40,7 +40,11 @@ class _ChatUiState extends ConsumerState<ChatUi> {
         SseModel sseModel = SseModel.fromJson(jsonData);
         ChatResponse chatResponse = ChatResponse();
         if (sseModel.done != true) {
-          chatResponse.content = sseModel.data ?? "";
+          // chatResponse.content = sseModel.data ?? "";
+          if (sseModel.data != null) {
+            chatResponse.content = sseModel.data?.data ?? "";
+            chatResponse.think = sseModel.data?.think ?? "";
+          }
           chatResponse.uuid = sseModel.uuid;
           chatResponse.stage = sseModel.message ?? "回答中...";
         } else {

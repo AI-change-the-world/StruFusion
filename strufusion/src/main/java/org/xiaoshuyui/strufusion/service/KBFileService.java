@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.xiaoshuyui.strufusion.common.SseResponse;
+import org.xiaoshuyui.strufusion.entity.DataWithThink;
 import org.xiaoshuyui.strufusion.entity.KB;
 import org.xiaoshuyui.strufusion.entity.KBCustomContent;
 import org.xiaoshuyui.strufusion.entity.KBFile;
@@ -189,8 +190,11 @@ public class KBFileService {
   }
 
   public void streamChat(
-      String message, Long kbId, SseEmitter emitter, SseResponse<String> response) {
+      String message, Long kbId, SseEmitter emitter, SseResponse<DataWithThink> response) {
+    DataWithThink dataWithThink = new DataWithThink();
     response.setMessage("正在进行意图识别...");
+    dataWithThink.setThink("正在进行意图识别...\n");
+    response.setData(dataWithThink);
     SseUtil.sseSend(emitter, response);
     QueryWrapper<KB> qw = new QueryWrapper<>();
     qw.eq("kb_id", kbId);
@@ -204,6 +208,8 @@ public class KBFileService {
     }
 
     String intent = intentRecognition(message, kb);
+    dataWithThink.setThink(intent + "\n");
+    response.setData(dataWithThink);
     if (intent.equals("无")) {
       response.setMessage("无效的意图，流程结束。");
       response.setDone(true);
@@ -213,6 +219,8 @@ public class KBFileService {
     response.setMessage("意图识别完成，结果为" + intent + ", 正在进行内容提取...");
     SseUtil.sseSend(emitter, response);
     List<Map<String, Object>> fieldMap = parseFieldsFromModelOutput(intent);
+    dataWithThink.setThink("查询字段包括:" + fieldMap + "\n");
+    response.setData(dataWithThink);
     if (fieldMap.isEmpty()) {
       response.setMessage("无匹配字段，流程结束。");
       response.setDone(true);
@@ -263,6 +271,9 @@ public class KBFileService {
 
     String content = toMarkdownTable(allContents);
 
+    dataWithThink.setThink("匹配的结果为:" + content + "\n");
+    response.setData(dataWithThink);
+
     String prompt = chatPrompt
         .replace("{{kb_name}}", kb.getName())
         .replace(
@@ -276,7 +287,9 @@ public class KBFileService {
         .streamChat(prompt)
         .doOnNext(
             data -> {
-              response.setData(data);
+              dataWithThink.setData(data);
+              dataWithThink.setThink("");
+              response.setData(dataWithThink);
               SseUtil.sseSend(emitter, response);
             })
         .blockLast();
@@ -408,5 +421,13 @@ public class KBFileService {
     }
 
     return resultList;
+  }
+
+  public List<KBFile> list(Long kbId) {
+    QueryWrapper<KBFile> queryWrapper = new QueryWrapper<>();
+    queryWrapper.eq("kb_id", kbId);
+    queryWrapper.eq("is_deleted", 0);
+
+    return kbFileMapper.selectList(queryWrapper);
   }
 }

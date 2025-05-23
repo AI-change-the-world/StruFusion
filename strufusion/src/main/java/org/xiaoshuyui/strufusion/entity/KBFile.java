@@ -14,6 +14,7 @@ public class KBFile {
   @TableId(value = "kb_file_id", type = IdType.AUTO)
   Long id;
 
+  @JsonIgnore
   @TableField("kb_id")
   Long kbId;
 

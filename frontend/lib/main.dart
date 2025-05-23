@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:frontend/chat_screen.dart';
+import 'package:frontend/app/route.dart';
 import 'package:frontend/dio_client.dart';
 
 void main() {
-  DioClient().init(baseUrl: "http://localhost:8080");
+  WidgetsFlutterBinding.ensureInitialized();
+  DioClient().init(baseUrl: "http://127.0.0.1:8080/strufusion");
   runApp(const ProviderScope(child: MyApp()));
 }
 
@@ -14,12 +15,16 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
+    return MaterialApp.router(
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color.fromARGB(255, 61, 124, 219),
+          brightness: Brightness.light,
+        ),
       ),
-      home: Scaffold(body: ChatUi()),
+      // showPerformanceOverlay: true,
+      debugShowCheckedModeBanner: false,
+      routerConfig: router,
     );
   }
 }

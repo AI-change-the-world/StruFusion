@@ -3,8 +3,15 @@ class ChatResponse {
   String? content;
   String? uuid;
   bool? done;
+  String think;
 
-  ChatResponse({this.stage, this.content, this.uuid, this.done});
+  ChatResponse({
+    this.stage,
+    this.content,
+    this.uuid,
+    this.done,
+    this.think = '',
+  });
 
   // 从 Map 转换为 ChatResponse 对象
   factory ChatResponse.fromJson(Map<String, dynamic> json) {

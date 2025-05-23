@@ -11,11 +11,3 @@ class HexColor extends Color {
 
   HexColor(final String hexColor) : super(_getColorFromHex(hexColor));
 }
-
-class Styles {
-  Styles._();
-
-  static Color black515A6E = HexColor('#515A6E');
-  static Color divider = HexColor('#DCDFE6');
-  static Color blue247AF2 = HexColor('#247AF2');
-}

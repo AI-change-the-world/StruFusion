@@ -1,11 +1,16 @@
 package org.xiaoshuyui.strufusion.controller;
 
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.xiaoshuyui.strufusion.common.Result;
+import org.xiaoshuyui.strufusion.entity.KB;
 import org.xiaoshuyui.strufusion.entity.requests.NewKBRequest;
 import org.xiaoshuyui.strufusion.service.KBService;
 
@@ -27,5 +32,11 @@ public class KBController {
     }
 
     return Result.OK();
+  }
+
+  @GetMapping("/list")
+  public Result list() {
+    List<KB> kbs = kbService.list();
+    return Result.OK_data(kbs);
   }
 }

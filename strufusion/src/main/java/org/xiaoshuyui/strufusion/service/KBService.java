@@ -1,8 +1,12 @@
 package org.xiaoshuyui.strufusion.service;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.List;
+
 import org.springframework.stereotype.Service;
 import org.xiaoshuyui.strufusion.entity.KB;
 import org.xiaoshuyui.strufusion.entity.requests.NewKBRequest;
@@ -31,5 +35,11 @@ public class KBService {
       log.error(e.getMessage());
       return (long) -1;
     }
+  }
+
+  public List<KB> list() {
+    QueryWrapper<KB> queryWrapper = new QueryWrapper<>();
+    queryWrapper.eq("is_deleted", 0);
+    return kbMapper.selectList(queryWrapper);
   }
 }

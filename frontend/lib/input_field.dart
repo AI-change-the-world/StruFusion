@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:frontend/hex_utils.dart';
+import 'package:frontend/styles.dart';
 
 typedef OnSubmit = void Function(String);
 
