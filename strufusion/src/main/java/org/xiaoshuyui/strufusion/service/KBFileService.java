@@ -1,6 +1,9 @@
 package org.xiaoshuyui.strufusion.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+
+import lombok.Data;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -40,6 +43,12 @@ public class KBFileService {
     this.aiService = aiService;
     this.kbMapper = kbMapper;
     this.kbCustomContentService = kbCustomContentService;
+  }
+
+  @Data
+  static class RelatedKB {
+    String name;
+    Long id;
   }
 
   static String contentExtract = """
@@ -164,6 +173,34 @@ public class KBFileService {
       请根据这些信息，用简洁准确的语言回答用户的问题。如果信息不足，请直接说明。
             """;
 
+  static String relatedKbPrompt = """
+      你是一个智能问答系统助手，当前系统中包含多个知识库，每个知识库都有编号、名称和简要描述。
+
+      用户将提出一个问题，你需要根据问题内容判断与之最相关的**一个**知识库（最多一个）。
+
+      知识库列表如下（Markdown 表格格式）：
+
+      {{kb_markdown}}
+
+      ---
+
+      请你判断用户的问题最主要涉及哪个知识库，并返回该知识库的编号和名称。
+
+      输出格式如下（只返回一行）：
+      编号; 知识库名称
+
+      例如：
+      1; 人才简历库
+
+      如果没有任何匹配的知识库，请返回：
+      无
+
+      ---
+
+      用户输入的问题是：
+      “{{user_input}}”
+            """;
+
   public String intentRecognition(String userInput, Long kbId) {
     QueryWrapper<KB> queryWrapper = new QueryWrapper<>();
     queryWrapper.eq("kb_id", kbId);
@@ -190,8 +227,152 @@ public class KBFileService {
   }
 
   public void streamChat(
+      String message, SseEmitter emitter, SseResponse<DataWithThink> response) {
+
+    DataWithThink dataWithThink = new DataWithThink();
+    QueryWrapper<KB> kbQueryWrapper = new QueryWrapper<>();
+    kbQueryWrapper.eq("is_deleted", 0);
+    // 知识库路由
+    List<KB> kbs = kbMapper.selectList(kbQueryWrapper);
+    if (kbs == null || kbs.isEmpty()) {
+      response.setMessage("无知识库匹配。");
+      dataWithThink.setData("无知识库匹配。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    String releatedKbString = kbToMarkdown(kbs);
+    dataWithThink.setThink("匹配最恰当的知识库...");
+    response.setData(dataWithThink);
+    SseUtil.sseSend(emitter, response);
+    String processedReleatedString = aiService
+        .chat(relatedKbPrompt.replace("{{kb_markdown}}", releatedKbString).replace("{{user_input}}", message));
+
+    List<RelatedKB> relatedKBs = parseRelatedKB(processedReleatedString);
+    if (relatedKBs == null || relatedKBs.isEmpty()) {
+      response.setMessage("无最恰当的知识库，请重新再问...");
+      dataWithThink.setData("无最恰当的知识库，请重新再问...");
+      response.setData(dataWithThink);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    dataWithThink.setData(processedReleatedString);
+    response.setData(dataWithThink);
+    SseUtil.sseSend(emitter, response);
+
+    RelatedKB relatedKB = relatedKBs.get(0);
+
+    response.setMessage("正在进行意图识别...");
+    dataWithThink.setThink("正在进行意图识别...\n");
+    response.setData(dataWithThink);
+    SseUtil.sseSend(emitter, response);
+    QueryWrapper<KB> qw = new QueryWrapper<>();
+    qw.eq("kb_id", relatedKB.getId());
+    qw.eq("is_deleted", 0);
+    var kb = kbMapper.selectOne(qw);
+    if (kb == null) {
+      response.setMessage("未找到知识库。");
+      dataWithThink.setData("未找到知识库。");
+      response.setData(dataWithThink);
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    String intent = intentRecognition(message, kb);
+    dataWithThink.setThink(intent + "\n");
+    response.setData(dataWithThink);
+    if (intent.equals("无")) {
+      response.setMessage("无效的意图，流程结束。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+    response.setMessage("意图识别完成，结果为" + intent + ", 正在进行内容提取...");
+    SseUtil.sseSend(emitter, response);
+    List<Map<String, Object>> fieldMap = parseFieldsFromModelOutput(intent);
+    dataWithThink.setThink("查询字段包括:" + fieldMap + "\n");
+    response.setData(dataWithThink);
+    if (fieldMap.isEmpty()) {
+      response.setMessage("无匹配字段，流程结束。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    QueryWrapper<KBCustomContent> queryWrapper = new QueryWrapper<>();
+    queryWrapper.eq("kb_id", kb.getId());
+    // for (var field : fieldMap) {
+    // queryWrapper.eq("kb_custom_content_name", field.get("name"));
+    // queryWrapper.eq("kb_custom_content_alias", field.get("alias"));
+    // if (!field.get("content").equals(null)) {
+    // queryWrapper.like("kb_custom_content_content", field.get("content"));
+    // }
+    // }
+    // 外层包一层 .and()，用于逻辑分组（可选）
+    queryWrapper.and(wrapper -> {
+      for (Map<String, Object> field : fieldMap) {
+        wrapper.or(orWrapper -> {
+          orWrapper.eq("kb_custom_content_name", field.get("name"))
+              .eq("kb_custom_content_alias", field.get("alias"));
+
+          if (field.get("content") != null) {
+            orWrapper.like("kb_custom_content_content", field.get("content"));
+          }
+        });
+      }
+    });
+    var kbCustomContentList = kbCustomContentService.list(queryWrapper);
+    if (kbCustomContentList.isEmpty()) {
+      response.setMessage("无匹配内容，流程结束。");
+      response.setDone(true);
+      SseUtil.sseSend(emitter, response);
+      return;
+    }
+
+    Set<Long> ids = new HashSet<>();
+    for (var kbCustomContent : kbCustomContentList) {
+      ids.add(kbCustomContent.getKbFileId());
+    }
+
+    List<Long> rangeIds = ids.stream().map(Long::valueOf).collect(Collectors.toList());
+
+    QueryWrapper<KBCustomContent> contentQueryWrapper = new QueryWrapper<>();
+    contentQueryWrapper.in("kb_file_id", rangeIds);
+    List<KBCustomContent> allContents = kbCustomContentService.list(contentQueryWrapper);
+
+    String content = toMarkdownTable(allContents);
+
+    dataWithThink.setThink("匹配的结果为:" + content + "\n");
+    response.setData(dataWithThink);
+
+    String prompt = chatPrompt
+        .replace("{{kb_name}}", kb.getName())
+        .replace(
+            "{{kb_des}}",
+            kb.getDescription())
+        .replace("{{question}}", message)
+        .replace("{{content}}", content);
+    response.setMessage("内容提取完成，正在生成回答...");
+    SseUtil.sseSend(emitter, response);
+    aiService
+        .streamChat(prompt)
+        .doOnNext(
+            data -> {
+              dataWithThink.setData(data);
+              dataWithThink.setThink("");
+              response.setData(dataWithThink);
+              SseUtil.sseSend(emitter, response);
+            })
+        .blockLast();
+  }
+
+  public void streamChat(
       String message, Long kbId, SseEmitter emitter, SseResponse<DataWithThink> response) {
     DataWithThink dataWithThink = new DataWithThink();
+
     response.setMessage("正在进行意图识别...");
     dataWithThink.setThink("正在进行意图识别...\n");
     response.setData(dataWithThink);
@@ -429,5 +610,42 @@ public class KBFileService {
     queryWrapper.eq("is_deleted", 0);
 
     return kbFileMapper.selectList(queryWrapper);
+  }
+
+  private String kbToMarkdown(List<KB> kbs) {
+    StringBuilder sb = new StringBuilder();
+    sb.append("|编号|名称｜描述|\n");
+    sb.append("|:---|:---|:---|\n");
+    for (KB kb : kbs) {
+      sb.append("|" + kb.getId() + "|" + kb.getName() + "|" + kb.getDescription() + "|");
+    }
+    return sb.toString();
+  }
+
+  private List<RelatedKB> parseRelatedKB(String modelOutput) {
+    List<RelatedKB> result = new ArrayList<>();
+    if (modelOutput == null || modelOutput.trim().equalsIgnoreCase("无")) {
+      return result; // 返回空列表
+    }
+
+    String[] lines = modelOutput.split("\\r?\\n");
+    for (String line : lines) {
+      String[] parts = line.split(";", 2);
+      if (parts.length == 2) {
+        try {
+          Long id = Long.parseLong(parts[0].trim());
+          String name = parts[1].trim();
+          RelatedKB kb = new RelatedKB();
+          kb.setId(id);
+          kb.setName(name);
+          result.add(kb);
+        } catch (NumberFormatException e) {
+          // 忽略非法行
+          System.err.println("解析失败的行: " + line);
+        }
+      }
+    }
+
+    return result;
   }
 }

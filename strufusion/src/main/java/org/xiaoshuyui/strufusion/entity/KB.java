@@ -39,4 +39,5 @@ public class KB {
    */
   @TableField(value = "kb_points")
   String points;
+
 }

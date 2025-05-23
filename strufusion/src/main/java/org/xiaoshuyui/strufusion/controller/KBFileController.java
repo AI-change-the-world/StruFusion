@@ -106,7 +106,12 @@ public class KBFileController {
         .execute(
             () -> {
               try {
-                kbFileService.streamChat(request.getMessage(), request.getKbId(), emitter, response);
+                if (request.getKbId() == null || request.getKbId() == 0) {
+                  kbFileService.streamChat(request.getMessage(), emitter, response);
+                } else {
+                  kbFileService.streamChat(request.getMessage(), request.getKbId(), emitter, response);
+                }
+
               } catch (Exception e) {
                 e.printStackTrace();
               } finally {
@@ -119,4 +124,5 @@ public class KBFileController {
 
     return emitter;
   }
+
 }
