@@ -125,12 +125,13 @@ public class KBFileService {
       你会收到一条用户的自然语言提问，以及该数据库支持的字段列表。字段以 JSON 数组形式给出，每个字段包含：
       - 中文名（name）
       - 英文别名（alias）
+      - 字段类型（type），可选值为 string 或 number
 
       你的任务是：
       1. 判断用户问题中涉及到的字段（可以是多个）
-      2. 尝试从问题中提取出与这些字段匹配的具体值（如“张三”、“Java”、“2023年”等）
-         - 如果提问中没有明确值，返回 null
-         - 如果有明确目标（如人名、编号等），请务必提取出来
+      2. 尝试从问题中提取出与这些字段匹配的具体值：
+         - 对于字符串类型（type = "string"）的字段，直接提取具体值（如“张三”、“Java”），若无明确值则设为 null
+         - 对于数值类型（type = "number"）的字段，提取数值和比较关系（如“高于3年经验”→ gt 3），若无具体值则设为 null
 
       ---
 
@@ -146,20 +147,24 @@ public class KBFileService {
 
       请你根据问题分析后，输出相关字段，每行一个，格式如下：
 
-      字段中文名；alias；内容（可以为 null）
+      字段中文名；alias；类型；比较关系（string 类型为 eq 或 null）；值（可以为 null）
 
       例如：
-      候选人姓名；name；张三
-      技能专长；skills；Java
-      工作经历；experience；null
+      候选人姓名；name；string；eq；张三
+      技能专长；skills；string；eq；Java
+      工作经验；experience；number；gt；3
+      期望薪资；expected_salary；number；null；null
 
       如果没有任何匹配字段，请仅输出一行：
       无
 
+      ---
+
       **注意事项**：
-      - 如果用户是在“推荐”或“筛选”某类对象（如“推荐会 Java 的人”），请返回表示“检索目标”的字段（如“候选人姓名”；内容为 null），以及表示意图的字段（如“技能专长”；内容为“Java”）。
-      - 输出内容不要换行或嵌套格式，只输出每行一条结构化记录。
-                        """;
+      - 如果问题中包含“查询目标”（如某人的姓名、某个编号），请务必返回该字段，类型为 string，比较关系为 eq
+      - 如果字段是 number 类型，且用户提问中包含了范围/比较（如“大于”、“小于”、“至少”、“最多”等），请正确提取为 gt、lt、ge、le、eq 等常见逻辑关系；如果无比较词则设为 null
+      - 每行只输出一条结构化记录，不要换行、不嵌套、不解释
+                              """;
 
   static String chatPrompt = """
       你是一个智能信息系统的助手，当前正在处理一个{{kb_name}}数据库,数据库主要功能是【{{kb_des}}】。
@@ -258,7 +263,7 @@ public class KBFileService {
       return;
     }
 
-    dataWithThink.setData(processedReleatedString);
+    dataWithThink.setThink(processedReleatedString);
     response.setData(dataWithThink);
     SseUtil.sseSend(emitter, response);
 
@@ -293,7 +298,7 @@ public class KBFileService {
     response.setMessage("意图识别完成，结果为" + intent + ", 正在进行内容提取...");
     SseUtil.sseSend(emitter, response);
     List<Map<String, Object>> fieldMap = parseFieldsFromModelOutput(intent);
-    dataWithThink.setThink("查询字段包括:" + fieldMap + "\n");
+    dataWithThink.setThink("查询字段包括:\n" + fieldMap + "\n");
     response.setData(dataWithThink);
     if (fieldMap.isEmpty()) {
       response.setMessage("无匹配字段，流程结束。");
@@ -318,8 +323,34 @@ public class KBFileService {
           orWrapper.eq("kb_custom_content_name", field.get("name"))
               .eq("kb_custom_content_alias", field.get("alias"));
 
-          if (field.get("content") != null) {
-            orWrapper.like("kb_custom_content_content", field.get("content"));
+          Object content = field.get("content");
+          String type = (String) field.get("type");
+          String op = (String) field.get("op");
+
+          if (content != null && "number".equalsIgnoreCase(type) && op != null) {
+            String contentStr = content.toString();
+            switch (op) {
+              case "eq":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) = {0}", contentStr);
+                break;
+              case "gt":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) > {0}", contentStr);
+                break;
+              case "lt":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) < {0}", contentStr);
+                break;
+              case "ge":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) >= {0}", contentStr);
+                break;
+              case "le":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) <= {0}", contentStr);
+                break;
+            }
+          }
+
+          // string 类型：不加 content 限制，扩大召回
+          if (content != null && "string".equalsIgnoreCase(type)) {
+            orWrapper.like("kb_custom_content_content", content);
           }
         });
       }
@@ -345,7 +376,7 @@ public class KBFileService {
 
     String content = toMarkdownTable(allContents);
 
-    dataWithThink.setThink("匹配的结果为:" + content + "\n");
+    dataWithThink.setThink("匹配的结果为:\n" + content + "\n");
     response.setData(dataWithThink);
 
     String prompt = chatPrompt
@@ -400,7 +431,7 @@ public class KBFileService {
     response.setMessage("意图识别完成，结果为" + intent + ", 正在进行内容提取...");
     SseUtil.sseSend(emitter, response);
     List<Map<String, Object>> fieldMap = parseFieldsFromModelOutput(intent);
-    dataWithThink.setThink("查询字段包括:" + fieldMap + "\n");
+    dataWithThink.setThink("查询字段包括:\n" + fieldMap + "\n");
     response.setData(dataWithThink);
     if (fieldMap.isEmpty()) {
       response.setMessage("无匹配字段，流程结束。");
@@ -425,9 +456,35 @@ public class KBFileService {
           orWrapper.eq("kb_custom_content_name", field.get("name"))
               .eq("kb_custom_content_alias", field.get("alias"));
 
-          if (field.get("content") != null) {
-            orWrapper.like("kb_custom_content_content", field.get("content"));
+          Object content = field.get("content");
+          String type = (String) field.get("type");
+          String op = (String) field.get("op");
+
+          if (content != null && "number".equalsIgnoreCase(type) && op != null) {
+            String contentStr = content.toString();
+            switch (op) {
+              case "eq":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) = {0}", contentStr);
+                break;
+              case "gt":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) > {0}", contentStr);
+                break;
+              case "lt":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) < {0}", contentStr);
+                break;
+              case "ge":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) >= {0}", contentStr);
+                break;
+              case "le":
+                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) <= {0}", contentStr);
+                break;
+            }
           }
+          // string 类型：不加 content 限制，扩大召回
+          if (content != null && "string".equalsIgnoreCase(type)) {
+            orWrapper.like("kb_custom_content_content", content);
+          }
+
         });
       }
     });
@@ -452,7 +509,7 @@ public class KBFileService {
 
     String content = toMarkdownTable(allContents);
 
-    dataWithThink.setThink("匹配的结果为:" + content + "\n");
+    dataWithThink.setThink("匹配的结果为:\n" + content + "\n");
     response.setData(dataWithThink);
 
     String prompt = chatPrompt
@@ -488,7 +545,7 @@ public class KBFileService {
     Map<Long, Map<String, String>> rowMap = new LinkedHashMap<>();
     for (KBCustomContent item : dataList) {
       rowMap
-          .computeIfAbsent(item.getId(), k -> new HashMap<>())
+          .computeIfAbsent(item.getKbFileId(), k -> new HashMap<>())
           .put(item.getName(), item.getContent());
     }
 
@@ -522,23 +579,23 @@ public class KBFileService {
     String[] lines = modelOutput.split("\\r?\\n");
 
     for (String line : lines) {
-      // 跳过空行或无效行
+      // 跳过空行或“无”
       if (line.trim().isEmpty() || line.trim().equalsIgnoreCase("无")) {
         continue;
       }
 
       String[] parts = line.split("；");
-      if (parts.length >= 2) {
+      if (parts.length >= 5) {
         Map<String, Object> fieldMap = new HashMap<>();
         fieldMap.put("name", parts[0].trim());
         fieldMap.put("alias", parts[1].trim());
+        fieldMap.put("type", parts[2].trim().toLowerCase());
 
-        // 支持可选的 content 字段，若没有则设为 null
-        if (parts.length >= 3 && !parts[2].trim().equalsIgnoreCase("null")) {
-          fieldMap.put("content", parts[2].trim());
-        } else {
-          fieldMap.put("content", null);
-        }
+        String op = parts[3].trim().toLowerCase();
+        fieldMap.put("op", op.equals("null") ? null : op);
+
+        String content = parts[4].trim();
+        fieldMap.put("content", content.equalsIgnoreCase("null") ? null : content);
 
         result.add(fieldMap);
       }

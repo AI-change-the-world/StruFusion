@@ -100,7 +100,7 @@ class _ChatUiState extends ConsumerState<ChatUi> {
     ref.read(chatNotifierProvider.notifier).addMessageBox(messageBox);
 
     sse("http://localhost:8080/strufusion/file/streamChat", {
-      "kbId": 1,
+      "kbId": 0,
       "message": s,
     }, _streamController);
   }

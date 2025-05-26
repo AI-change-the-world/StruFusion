@@ -30,3 +30,29 @@
 
 1. 不适合超长文本，或者说超长文本需要做额外的处理  
 2. 不适合类似法律法规这种条目很多的场景，也需要额外处理
+
+
+### Nacos 配置模板
+
+数据库：
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/stu_fusion?serverTimezone=Asia/Shanghai&useUnicode=true&characterEncoding=utf8&characterSetResults=utf8&useSSL=false&allowMultiQueries=true&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      max-lifetime: 1800000
+      idle-timeout: 600000
+```
+
+LLM:
+
+```yaml
+ai:
+  openai:
+    model: model-name
+    api-key: sk-xx
+    base-url: base-url
+```

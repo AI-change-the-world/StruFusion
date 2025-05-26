@@ -117,6 +117,7 @@ public class KBFileController {
               } finally {
 
                 response.setDone(true);
+                response.setData(new DataWithThink());
                 SseUtil.sseSend(emitter, response);
                 emitter.complete();
               }

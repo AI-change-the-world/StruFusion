@@ -42,6 +42,12 @@ class ResponseMessageBox extends MessageBox {
                 mainAxisAlignment: MainAxisAlignment.start,
                 children: [Text(stage), Spacer()],
               ),
+            if (super.think.trim().isNotEmpty)
+              Container(
+                color: Colors.grey[200],
+                alignment: Alignment.topLeft,
+                child: MarkdownBlock(data: super.think),
+              ),
             Align(
               alignment: Alignment.topLeft,
               child: MarkdownBlock(data: content),

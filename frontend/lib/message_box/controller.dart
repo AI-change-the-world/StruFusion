@@ -40,6 +40,7 @@ class ChatNotifier extends AutoDisposeNotifier<MessageState> {
     if (box != null) {
       final l = List<MessageBox>.from(state.messages)..remove(box);
       box.content += response.content ?? "";
+      box.think += response.think;
       if (box is ResponseMessageBox) {
         box.stage = response.stage ?? "";
       }
