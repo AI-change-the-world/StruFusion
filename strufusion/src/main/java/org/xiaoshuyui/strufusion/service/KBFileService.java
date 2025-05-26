@@ -248,7 +248,7 @@ public class KBFileService {
     }
 
     String releatedKbString = kbToMarkdown(kbs);
-    dataWithThink.setThink("匹配最恰当的知识库...");
+    dataWithThink.setThink("1. 匹配最恰当的知识库...\n");
     response.setData(dataWithThink);
     SseUtil.sseSend(emitter, response);
     String processedReleatedString = aiService
@@ -263,14 +263,14 @@ public class KBFileService {
       return;
     }
 
-    dataWithThink.setThink(processedReleatedString);
+    dataWithThink.setThink("最匹配的知识库为： " + processedReleatedString + "\n");
     response.setData(dataWithThink);
     SseUtil.sseSend(emitter, response);
 
     RelatedKB relatedKB = relatedKBs.get(0);
 
     response.setMessage("正在进行意图识别...");
-    dataWithThink.setThink("正在进行意图识别...\n");
+    dataWithThink.setThink("2. 正在进行意图识别...\n");
     response.setData(dataWithThink);
     SseUtil.sseSend(emitter, response);
     QueryWrapper<KB> qw = new QueryWrapper<>();
@@ -287,18 +287,21 @@ public class KBFileService {
     }
 
     String intent = intentRecognition(message, kb);
-    dataWithThink.setThink(intent + "\n");
+    dataWithThink.setThink("意图识别结果为： " + intent + "\n");
     response.setData(dataWithThink);
+    SseUtil.sseSend(emitter, response);
     if (intent.equals("无")) {
       response.setMessage("无效的意图，流程结束。");
       response.setDone(true);
       SseUtil.sseSend(emitter, response);
       return;
     }
-    response.setMessage("意图识别完成，结果为" + intent + ", 正在进行内容提取...");
+    dataWithThink.setThink("3. 进行内容提取...\n");
+    response.setMessage("进行内容提取...");
     SseUtil.sseSend(emitter, response);
     List<Map<String, Object>> fieldMap = parseFieldsFromModelOutput(intent);
-    dataWithThink.setThink("查询字段包括:\n" + fieldMap + "\n");
+    dataWithThink.setThink("查询字段包括:" + fieldMap + "\n");
+    SseUtil.sseSend(emitter, response);
     response.setData(dataWithThink);
     if (fieldMap.isEmpty()) {
       response.setMessage("无匹配字段，流程结束。");
@@ -358,6 +361,9 @@ public class KBFileService {
     var kbCustomContentList = kbCustomContentService.list(queryWrapper);
     if (kbCustomContentList.isEmpty()) {
       response.setMessage("无匹配内容，流程结束。");
+      dataWithThink.setData("无匹配内容，流程结束。");
+      dataWithThink.setThink("");
+      response.setData(dataWithThink);
       response.setDone(true);
       SseUtil.sseSend(emitter, response);
       return;
@@ -400,6 +406,7 @@ public class KBFileService {
         .blockLast();
   }
 
+  @Deprecated
   public void streamChat(
       String message, Long kbId, SseEmitter emitter, SseResponse<DataWithThink> response) {
     DataWithThink dataWithThink = new DataWithThink();

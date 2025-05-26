@@ -39,16 +39,29 @@ class _ChatUiState extends ConsumerState<ChatUi> {
         Map<String, dynamic> jsonData = jsonDecode(d);
         SseModel sseModel = SseModel.fromJson(jsonData);
         ChatResponse chatResponse = ChatResponse();
-        if (sseModel.done != true) {
-          // chatResponse.content = sseModel.data ?? "";
-          if (sseModel.data != null) {
-            chatResponse.content = sseModel.data?.data ?? "";
-            chatResponse.think = sseModel.data?.think ?? "";
-          }
-          chatResponse.uuid = sseModel.uuid;
-          chatResponse.stage = sseModel.message ?? "回答中...";
-        } else {
-          chatResponse.uuid = sseModel.uuid;
+        // if (sseModel.done != true) {
+        //   // chatResponse.content = sseModel.data ?? "";
+        //   if (sseModel.data != null) {
+        //     chatResponse.content = sseModel.data?.data ?? "";
+        //     chatResponse.think = sseModel.data?.think ?? "";
+        //   }
+        //   chatResponse.uuid = sseModel.uuid;
+        //   chatResponse.stage = sseModel.message ?? "回答中...";
+        // } else {
+        //   chatResponse.uuid = sseModel.uuid;
+        //   chatResponse.stage = "done";
+        //   chatResponse.done = true;
+        // }
+
+        if (sseModel.data != null) {
+          chatResponse.content = sseModel.data?.data ?? "";
+          chatResponse.think = sseModel.data?.think ?? "";
+          print("think    ${sseModel.data?.think}");
+        }
+        chatResponse.uuid = sseModel.uuid;
+        chatResponse.stage = sseModel.message ?? "回答中...";
+
+        if (sseModel.done == true) {
           chatResponse.stage = "done";
           chatResponse.done = true;
         }

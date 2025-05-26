@@ -10,6 +10,7 @@ import 'package:frontend/kb/kb_response.dart';
 import 'package:frontend/logger.dart';
 import 'package:frontend/styles.dart';
 import 'package:he/he.dart' show AnimatedTile;
+import 'package:markdown_widget/widget/all.dart';
 
 class PageNotifier extends AutoDisposeNotifier<int> {
   final PageController controller = PageController(initialPage: 0);
@@ -164,7 +165,36 @@ class _KbDetailsWidgetState extends ConsumerState<KbDetailsWidget> {
                                         color: Colors.white,
                                         size: 18,
                                       ),
-                                      onTap: () {},
+                                      onTap: () {
+                                        showGeneralDialog(
+                                          barrierColor: Styles.barriarColor,
+                                          barrierDismissible: true,
+                                          barrierLabel: "file content",
+                                          context: context,
+                                          pageBuilder: (c, _, __) {
+                                            return Center(
+                                              child: dialogWrapper(
+                                                width:
+                                                    MediaQuery.of(
+                                                      context,
+                                                    ).size.width *
+                                                    0.6,
+                                                height:
+                                                    MediaQuery.of(
+                                                      context,
+                                                    ).size.height *
+                                                    0.6,
+                                                child: Container(
+                                                  padding: EdgeInsets.all(10),
+                                                  child: MarkdownWidget(
+                                                    data: e.content ?? "",
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
                                     );
                                   }).toList(),
                             ),
@@ -329,6 +359,22 @@ class _KBDetails extends StatelessWidget {
                               ),
                               TextSpan(
                                 text: data["alias"],
+                                style: Styles.defaultButtonTextStyleGrey,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: "类型: ",
+                                style: Styles.defaultButtonTextStyle,
+                              ),
+                              TextSpan(
+                                text: data["type"],
                                 style: Styles.defaultButtonTextStyleGrey,
                               ),
                             ],

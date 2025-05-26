@@ -55,6 +55,7 @@ class ChatNotifier extends AutoDisposeNotifier<MessageState> {
           content: response.content ?? "",
           id: response.uuid!,
           stage: response.stage ?? "",
+          think: response.think,
         ),
       );
 

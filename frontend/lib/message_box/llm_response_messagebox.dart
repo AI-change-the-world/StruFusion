@@ -12,6 +12,7 @@ class ResponseMessageBox extends MessageBox {
     required super.content,
     required this.id,
     required super.stage,
+    super.think,
   });
 
   static const double iconSize = 20;
