@@ -56,7 +56,7 @@ class _ChatUiState extends ConsumerState<ChatUi> {
         if (sseModel.data != null) {
           chatResponse.content = sseModel.data?.data ?? "";
           chatResponse.think = sseModel.data?.think ?? "";
-          print("think    ${sseModel.data?.think}");
+          // print("think    ${sseModel.data?.think}");
         }
         chatResponse.uuid = sseModel.uuid;
         chatResponse.stage = sseModel.message ?? "回答中...";
@@ -112,9 +112,29 @@ class _ChatUiState extends ConsumerState<ChatUi> {
 
     ref.read(chatNotifierProvider.notifier).addMessageBox(messageBox);
 
-    sse("http://localhost:8080/strufusion/file/streamChat", {
-      "kbId": 0,
-      "message": s,
-    }, _streamController);
+    sse(
+      "http://localhost:8080/strufusion/file/streamChat",
+      {"kbId": 0, "message": s},
+      _streamController,
+      onDone: (p0) {
+        if (p0.isNotEmpty) {
+          final list = p0.split("\n");
+          StringBuffer sb = StringBuffer();
+
+          for (var i in list) {
+            if (i.isEmpty) {
+              continue;
+            }
+            i = i.replaceFirst("data:", "");
+            Map<String, dynamic> jsonData = jsonDecode(i);
+            SseModel sseModel = SseModel.fromJson(jsonData);
+            sb.write(sseModel.data?.data ?? "");
+          }
+          ref
+              .read(chatNotifierProvider.notifier)
+              .updateLastMessage(sb.toString());
+        }
+      },
+    );
   }
 }

@@ -28,6 +28,16 @@ class ChatNotifier extends AutoDisposeNotifier<MessageState> {
     state = state.copyWith(messages: [...state.messages, box]);
   }
 
+  void updateLastMessage(String content) {
+    final box = getLastMessage();
+
+    if (box != null && box is ResponseMessageBox) {
+      final l = List<MessageBox>.from(state.messages)..remove(box);
+      box.content = content;
+      state = state.copyWith(messages: [...l, box]);
+    }
+  }
+
   void updateMessageBox(ChatResponse response) {
     final box =
         state.messages

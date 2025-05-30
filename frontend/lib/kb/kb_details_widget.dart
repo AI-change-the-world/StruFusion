@@ -5,12 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/base_response.dart';
 import 'package:frontend/dialog_wrapper.dart';
 import 'package:frontend/dio_client.dart';
+import 'package:frontend/kb/kb_file_content.dart';
 import 'package:frontend/kb/kb_file_response.dart';
 import 'package:frontend/kb/kb_response.dart';
 import 'package:frontend/logger.dart';
 import 'package:frontend/styles.dart';
 import 'package:he/he.dart' show AnimatedTile;
-import 'package:markdown_widget/widget/all.dart';
 
 class PageNotifier extends AutoDisposeNotifier<int> {
   final PageController controller = PageController(initialPage: 0);
@@ -150,51 +150,42 @@ class _KbDetailsWidgetState extends ConsumerState<KbDetailsWidget> {
                               runSpacing: 10,
                               children:
                                   d.files.map((e) {
-                                    return AnimatedTile(
-                                      width: 160,
-                                      height: 100,
-                                      color: const Color.fromARGB(
-                                        255,
-                                        89,
-                                        241,
-                                        255,
-                                      ),
-                                      title: e.name,
-                                      icon: Icon(
-                                        Icons.file_copy,
-                                        color: Colors.white,
-                                        size: 18,
-                                      ),
-                                      onTap: () {
-                                        showGeneralDialog(
-                                          barrierColor: Styles.barriarColor,
-                                          barrierDismissible: true,
-                                          barrierLabel: "file content",
-                                          context: context,
-                                          pageBuilder: (c, _, __) {
-                                            return Center(
-                                              child: dialogWrapper(
-                                                width:
-                                                    MediaQuery.of(
-                                                      context,
-                                                    ).size.width *
-                                                    0.6,
-                                                height:
-                                                    MediaQuery.of(
-                                                      context,
-                                                    ).size.height *
-                                                    0.6,
-                                                child: Container(
-                                                  padding: EdgeInsets.all(10),
-                                                  child: MarkdownWidget(
-                                                    data: e.content ?? "",
-                                                  ),
+                                    return Tooltip(
+                                      waitDuration: Duration(milliseconds: 500),
+                                      message: e.name,
+                                      child: AnimatedTile(
+                                        width: 160,
+                                        height: 100,
+                                        color: const Color.fromARGB(
+                                          255,
+                                          89,
+                                          222,
+                                          255,
+                                        ),
+                                        title: e.name,
+                                        description: "No description.",
+                                        icon: Icon(
+                                          Icons.file_copy,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                        onTap: () {
+                                          showGeneralDialog(
+                                            barrierColor: Styles.barriarColor,
+                                            barrierDismissible: true,
+                                            barrierLabel: "file content",
+                                            context: context,
+                                            pageBuilder: (c, _, __) {
+                                              return Center(
+                                                child: KbFileContentWidget(
+                                                  fileId: e.id,
+                                                  content: e.content ?? "",
                                                 ),
-                                              ),
-                                            );
-                                          },
-                                        );
-                                      },
+                                              );
+                                            },
+                                          );
+                                        },
+                                      ),
                                     );
                                   }).toList(),
                             ),

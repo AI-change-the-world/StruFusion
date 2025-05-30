@@ -21,6 +21,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import org.xiaoshuyui.strufusion.common.Result;
 import org.xiaoshuyui.strufusion.common.SseResponse;
 import org.xiaoshuyui.strufusion.entity.DataWithThink;
+import org.xiaoshuyui.strufusion.service.KBCustomContentService;
 import org.xiaoshuyui.strufusion.service.KBFileService;
 import org.xiaoshuyui.strufusion.util.DocReader;
 import org.xiaoshuyui.strufusion.util.SseUtil;
@@ -31,8 +32,11 @@ import org.xiaoshuyui.strufusion.util.SseUtil;
 public class KBFileController {
   final KBFileService kbFileService;
 
-  public KBFileController(KBFileService kbFileService) {
+  final KBCustomContentService kbFileContentService;
+
+  public KBFileController(KBFileService kbFileService, KBCustomContentService kbFileContentService) {
     this.kbFileService = kbFileService;
+    this.kbFileContentService = kbFileContentService;
   }
 
   @Deprecated(since = "use `uploadFiles`, this is for test")
@@ -124,6 +128,11 @@ public class KBFileController {
             });
 
     return emitter;
+  }
+
+  @GetMapping("/{fileId}/content")
+  public Result getMethodName(@PathVariable Long fileId) {
+    return Result.OK_data(kbFileContentService.getContentsByFileId(fileId));
   }
 
 }
