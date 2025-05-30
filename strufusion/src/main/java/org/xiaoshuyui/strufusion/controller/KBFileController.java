@@ -1,10 +1,8 @@
 package org.xiaoshuyui.strufusion.controller;
 
 import io.swagger.v3.oas.annotations.Parameter;
-
 import java.util.UUID;
 import java.util.concurrent.Executors;
-
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
@@ -34,7 +32,8 @@ public class KBFileController {
 
   final KBCustomContentService kbFileContentService;
 
-  public KBFileController(KBFileService kbFileService, KBCustomContentService kbFileContentService) {
+  public KBFileController(
+      KBFileService kbFileService, KBCustomContentService kbFileContentService) {
     this.kbFileService = kbFileService;
     this.kbFileContentService = kbFileContentService;
   }
@@ -99,8 +98,7 @@ public class KBFileController {
   }
 
   @PostMapping("/streamChat")
-  public SseEmitter streamChat(
-      @RequestBody KBRequest request) {
+  public SseEmitter streamChat(@RequestBody KBRequest request) {
     SseEmitter emitter = new SseEmitter(36000000L);
     SseResponse<DataWithThink> response = new SseResponse<>();
 
@@ -113,7 +111,8 @@ public class KBFileController {
                 if (request.getKbId() == null || request.getKbId() == 0) {
                   kbFileService.streamChat(request.getMessage(), emitter, response);
                 } else {
-                  kbFileService.streamChat(request.getMessage(), request.getKbId(), emitter, response);
+                  kbFileService.streamChat(
+                      request.getMessage(), request.getKbId(), emitter, response);
                 }
 
               } catch (Exception e) {
@@ -134,5 +133,4 @@ public class KBFileController {
   public Result getMethodName(@PathVariable Long fileId) {
     return Result.OK_data(kbFileContentService.getContentsByFileId(fileId));
   }
-
 }

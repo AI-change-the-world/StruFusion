@@ -1,9 +1,6 @@
 package org.xiaoshuyui.strufusion.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-
-import lombok.Data;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -15,6 +12,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import lombok.Data;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -89,34 +87,51 @@ public class KBFileService {
                   """;
 
   // static String intentRec = """
-  // 你是一个智能信息系统的助手，当前正在处理一个{{kb_name}}数据库,数据库主要功能是【{{kb_des}}】。
+  // 你是一个智能信息系统助手，当前正在处理一个名为「{{kb_name}}」的数据库，数据库的主要功能是：【{{kb_des}}】。
 
-  // 你会收到一个用户提问的内容，以及系统支持的字段列表，每个字段由“中文名”和“英文别名”组成。
+  // 你会收到一条用户的自然语言提问，以及该数据库支持的字段列表。字段以 JSON 数组形式给出，每个字段包含：
+  // - 中文名（name）
+  // - 英文别名（alias）
+  // - 字段类型（type），可选值为 string 或 number
 
   // 你的任务是：
-  // 1. 找出问题中**涉及的字段**
-  // 2. 对于每个字段，尝试从提问中提取出明确的值（如“张三”、“2023年”、“5万元”等），如果没有提到具体值，则该字段的值为 `null`
+  // 1. 判断用户问题中涉及到的字段（可以是多个）
+  // 2. 尝试从问题中提取出与这些字段匹配的具体值：
+  // - 对于字符串类型（type = "string"）的字段，直接提取具体值（如“张三”、“Java”），若无明确值则设为 null
+  // - 对于数值类型（type = "number"）的字段，提取数值和比较关系（如“高于3年经验”→ gt 3），若无具体值则设为 null
 
   // ---
 
-  // 字段列表如下（格式为 JSON）：
+  // 字段列表如下（JSON）：
   // {{fields_json}}
+
+  // ---
 
   // 用户输入的问题是：
   // “{{user_input}}”
 
-  // 请你返回最相关的字段，每行一个，格式如下：
+  // ---
 
-  // 字段中文名；alias；content（可以为 null）
+  // 请你根据问题分析后，输出相关字段，每行一个，格式如下：
+
+  // 字段中文名；alias；类型；比较关系（string 类型为 eq 或 null）；值（可以为 null）
 
   // 例如：
-  // 候选人姓名；name；张三
-  // 技能专长；skills；null
+  // 候选人姓名；name；string；eq；张三
+  // 技能专长；skills；string；eq；Java
+  // 工作经验；experience；number；gt；3
+  // 期望薪资；expected_salary；number；null；null
 
-  // **注意：**
-  // - 如果问题中包含“查询目标”（如某人的姓名、某个编号），请务必返回这个字段，并提取值
-  // - 如果没有匹配字段，请仅返回：
+  // 如果没有任何匹配字段，请仅输出一行：
   // 无
+
+  // ---
+
+  // **注意事项**：
+  // - 如果问题中包含“查询目标”（如某人的姓名、某个编号），请务必返回该字段，类型为 string，比较关系为 eq
+  // - 如果字段是 number 类型，且用户提问中包含了范围/比较（如“大于”、“小于”、“至少”、“最多”等），请正确提取为 gt、lt、ge、le、eq
+  // 等常见逻辑关系；如果无比较词则设为 null
+  // - 每行只输出一条结构化记录，不要换行、不嵌套、不解释
   // """;
 
   static String intentRec = """
@@ -164,7 +179,7 @@ public class KBFileService {
       - 如果问题中包含“查询目标”（如某人的姓名、某个编号），请务必返回该字段，类型为 string，比较关系为 eq
       - 如果字段是 number 类型，且用户提问中包含了范围/比较（如“大于”、“小于”、“至少”、“最多”等），请正确提取为 gt、lt、ge、le、eq 等常见逻辑关系；如果无比较词则设为 null
       - 每行只输出一条结构化记录，不要换行、不嵌套、不解释
-                              """;
+                                    """;
 
   static String chatPrompt = """
       你是一个智能信息系统的助手，当前正在处理一个{{kb_name}}数据库,数据库主要功能是【{{kb_des}}】。
@@ -231,8 +246,7 @@ public class KBFileService {
             .replace("{{kb_des}}", kb.getDescription()));
   }
 
-  public void streamChat(
-      String message, SseEmitter emitter, SseResponse<DataWithThink> response) {
+  public void streamChat(String message, SseEmitter emitter, SseResponse<DataWithThink> response) {
 
     DataWithThink dataWithThink = new DataWithThink();
     QueryWrapper<KB> kbQueryWrapper = new QueryWrapper<>();
@@ -251,8 +265,10 @@ public class KBFileService {
     dataWithThink.setThink("1. 匹配最恰当的知识库...\n");
     response.setData(dataWithThink);
     SseUtil.sseSend(emitter, response);
-    String processedReleatedString = aiService
-        .chat(relatedKbPrompt.replace("{{kb_markdown}}", releatedKbString).replace("{{user_input}}", message));
+    String processedReleatedString = aiService.chat(
+        relatedKbPrompt
+            .replace("{{kb_markdown}}", releatedKbString)
+            .replace("{{user_input}}", message));
 
     List<RelatedKB> relatedKBs = parseRelatedKB(processedReleatedString);
     if (relatedKBs == null || relatedKBs.isEmpty()) {
@@ -310,54 +326,67 @@ public class KBFileService {
       return;
     }
 
+    /// TODO 是否增加一个权重字段，用于增强检索性能
+    // boolean hasThemeFilter = false;
+
+    // for (Map<String, Object> field : fieldMap) {
+    // if ("contract_type".equals(field.get("alias")) && field.get("content") !=
+    // null) {
+    // hasThemeFilter = true;
+    // break;
+    // }
+    // }
+
     QueryWrapper<KBCustomContent> queryWrapper = new QueryWrapper<>();
     queryWrapper.eq("kb_id", kb.getId());
-    // for (var field : fieldMap) {
-    // queryWrapper.eq("kb_custom_content_name", field.get("name"));
-    // queryWrapper.eq("kb_custom_content_alias", field.get("alias"));
-    // if (!field.get("content").equals(null)) {
-    // queryWrapper.like("kb_custom_content_content", field.get("content"));
-    // }
-    // }
+
     // 外层包一层 .and()，用于逻辑分组（可选）
-    queryWrapper.and(wrapper -> {
-      for (Map<String, Object> field : fieldMap) {
-        wrapper.or(orWrapper -> {
-          orWrapper.eq("kb_custom_content_name", field.get("name"))
-              .eq("kb_custom_content_alias", field.get("alias"));
+    queryWrapper.and(
+        wrapper -> {
+          for (Map<String, Object> field : fieldMap) {
+            wrapper.or(
+                orWrapper -> {
+                  orWrapper
+                      .eq("kb_custom_content_name", field.get("name"))
+                      .eq("kb_custom_content_alias", field.get("alias"));
 
-          Object content = field.get("content");
-          String type = (String) field.get("type");
-          String op = (String) field.get("op");
+                  Object content = field.get("content");
+                  String type = (String) field.get("type");
+                  String op = (String) field.get("op");
 
-          if (content != null && "number".equalsIgnoreCase(type) && op != null) {
-            String contentStr = content.toString();
-            switch (op) {
-              case "eq":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) = {0}", contentStr);
-                break;
-              case "gt":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) > {0}", contentStr);
-                break;
-              case "lt":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) < {0}", contentStr);
-                break;
-              case "ge":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) >= {0}", contentStr);
-                break;
-              case "le":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) <= {0}", contentStr);
-                break;
-            }
-          }
+                  if (content != null && "number".equalsIgnoreCase(type) && op != null) {
+                    String contentStr = content.toString();
+                    switch (op) {
+                      case "eq":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) = {0}", contentStr);
+                        break;
+                      case "gt":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) > {0}", contentStr);
+                        break;
+                      case "lt":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) < {0}", contentStr);
+                        break;
+                      case "ge":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) >= {0}", contentStr);
+                        break;
+                      case "le":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) <= {0}", contentStr);
+                        break;
+                    }
+                  }
 
-          // string 类型：不加 content 限制，扩大召回
-          if (content != null && "string".equalsIgnoreCase(type)) {
-            orWrapper.like("kb_custom_content_content", content);
+                  // string 类型：不加 content 限制，扩大召回
+                  if (content != null && "string".equalsIgnoreCase(type)) {
+                    orWrapper.like("kb_custom_content_content", content);
+                  }
+                });
           }
         });
-      }
-    });
     var kbCustomContentList = kbCustomContentService.list(queryWrapper);
     if (kbCustomContentList.isEmpty()) {
       response.setMessage("无匹配内容，流程结束。");
@@ -387,9 +416,7 @@ public class KBFileService {
 
     String prompt = chatPrompt
         .replace("{{kb_name}}", kb.getName())
-        .replace(
-            "{{kb_des}}",
-            kb.getDescription())
+        .replace("{{kb_des}}", kb.getDescription())
         .replace("{{question}}", message)
         .replace("{{content}}", content);
     response.setMessage("内容提取完成，正在生成回答...");
@@ -457,44 +484,51 @@ public class KBFileService {
     // }
     // }
     // 外层包一层 .and()，用于逻辑分组（可选）
-    queryWrapper.and(wrapper -> {
-      for (Map<String, Object> field : fieldMap) {
-        wrapper.or(orWrapper -> {
-          orWrapper.eq("kb_custom_content_name", field.get("name"))
-              .eq("kb_custom_content_alias", field.get("alias"));
+    queryWrapper.and(
+        wrapper -> {
+          for (Map<String, Object> field : fieldMap) {
+            wrapper.or(
+                orWrapper -> {
+                  orWrapper
+                      .eq("kb_custom_content_name", field.get("name"))
+                      .eq("kb_custom_content_alias", field.get("alias"));
 
-          Object content = field.get("content");
-          String type = (String) field.get("type");
-          String op = (String) field.get("op");
+                  Object content = field.get("content");
+                  String type = (String) field.get("type");
+                  String op = (String) field.get("op");
 
-          if (content != null && "number".equalsIgnoreCase(type) && op != null) {
-            String contentStr = content.toString();
-            switch (op) {
-              case "eq":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) = {0}", contentStr);
-                break;
-              case "gt":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) > {0}", contentStr);
-                break;
-              case "lt":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) < {0}", contentStr);
-                break;
-              case "ge":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) >= {0}", contentStr);
-                break;
-              case "le":
-                orWrapper.apply("CAST(kb_custom_content_content AS DECIMAL) <= {0}", contentStr);
-                break;
-            }
+                  if (content != null && "number".equalsIgnoreCase(type) && op != null) {
+                    String contentStr = content.toString();
+                    switch (op) {
+                      case "eq":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) = {0}", contentStr);
+                        break;
+                      case "gt":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) > {0}", contentStr);
+                        break;
+                      case "lt":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) < {0}", contentStr);
+                        break;
+                      case "ge":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) >= {0}", contentStr);
+                        break;
+                      case "le":
+                        orWrapper.apply(
+                            "CAST(kb_custom_content_content AS DECIMAL) <= {0}", contentStr);
+                        break;
+                    }
+                  }
+                  // string 类型：不加 content 限制，扩大召回
+                  if (content != null && "string".equalsIgnoreCase(type)) {
+                    orWrapper.like("kb_custom_content_content", content);
+                  }
+                });
           }
-          // string 类型：不加 content 限制，扩大召回
-          if (content != null && "string".equalsIgnoreCase(type)) {
-            orWrapper.like("kb_custom_content_content", content);
-          }
-
         });
-      }
-    });
     var kbCustomContentList = kbCustomContentService.list(queryWrapper);
     if (kbCustomContentList.isEmpty()) {
       response.setMessage("无匹配内容，流程结束。");
@@ -521,9 +555,7 @@ public class KBFileService {
 
     String prompt = chatPrompt
         .replace("{{kb_name}}", kb.getName())
-        .replace(
-            "{{kb_des}}",
-            kb.getDescription())
+        .replace("{{kb_des}}", kb.getDescription())
         .replace("{{question}}", message)
         .replace("{{content}}", content);
     response.setMessage("内容提取完成，正在生成回答...");

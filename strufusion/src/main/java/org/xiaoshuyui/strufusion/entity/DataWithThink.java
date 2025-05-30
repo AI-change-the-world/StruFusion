@@ -4,6 +4,6 @@ import lombok.Data;
 
 @Data
 public class DataWithThink {
-    String data;
-    String think;
+  String data;
+  String think;
 }
