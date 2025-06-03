@@ -87,6 +87,7 @@ class _KbFileContentWidgetState extends State<KbFileContentWidget>
                                 constraints: BoxConstraints(minHeight: 30),
                                 // height: 30,
                                 child: Row(
+                                  spacing: 5,
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     Expanded(
@@ -109,6 +110,7 @@ class _KbFileContentWidgetState extends State<KbFileContentWidget>
                                         ),
                                       ),
                                     ),
+
                                     // Expanded(child: Text("列名: ${data["alias"]}")),
                                     Expanded(
                                       flex: 3,
@@ -122,6 +124,27 @@ class _KbFileContentWidgetState extends State<KbFileContentWidget>
                                             ),
                                             TextSpan(
                                               text: data.content,
+                                              style:
+                                                  Styles
+                                                      .defaultButtonTextStyleGrey,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+
+                                    Expanded(
+                                      flex: 1,
+                                      child: Text.rich(
+                                        TextSpan(
+                                          children: [
+                                            TextSpan(
+                                              text: "参考: ",
+                                              style:
+                                                  Styles.defaultButtonTextStyle,
+                                            ),
+                                            TextSpan(
+                                              text: data.reference.toString(),
                                               style:
                                                   Styles
                                                       .defaultButtonTextStyleGrey,

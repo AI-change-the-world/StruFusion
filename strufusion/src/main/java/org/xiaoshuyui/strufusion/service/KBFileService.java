@@ -1,6 +1,7 @@
 package org.xiaoshuyui.strufusion.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -49,7 +50,7 @@ public class KBFileService {
     Long id;
   }
 
-  static String contentExtract = """
+  static String contentExtractV0 = """
       你是信息抽取助手。
 
       下面给你一段字段定义，格式是 JSON 数组，数组里每个对象包含两个字段：
@@ -85,6 +86,60 @@ public class KBFileService {
       姓名；name；张三
       年龄；age；28岁
                   """;
+
+  static String contentExtract = """
+      你是信息抽取助手。
+
+      下面给你一段字段定义，格式是 JSON 数组，数组里每个对象包含两个字段：
+      - "name" 是字段中文名
+      - "alias" 是字段英文名
+
+      你的任务是：根据字段定义，从下面这段原文中抽取对应字段的内容。
+
+      对于每个字段，请输出以下四项内容：
+      1. 字段中文名
+      2. 字段英文名
+      3. 抽取出的字段值（如未明确提及，可省略为 null）
+      4. 字段在原文中出现位置的引用片段（reference），格式为 `start...end`，表示字段所在内容的上下文
+
+      ---
+
+      字段定义：
+      {{fields_json}}
+
+      ---
+
+      原文：
+      {{text}}
+
+      ---
+
+      输出格式如下（每行一条）：
+      字段中文名；alias；字段值；start_text...end_text
+
+      注意事项：
+      - 如果字段值在文本中未提及，请将字段值设为 null
+      - reference 是原文中的两个片段（最多各 5 个字），用 "..." 连接，表示该字段值出现在这两段之间或附近
+      - reference 的片段必须是原文中真实出现的内容，可用于后续在原文中定位
+      - 如果没有任何字段命中，请仅输出一行：无
+
+      ---
+
+      示例输入：
+
+      字段定义：
+      [
+        {"name": "姓名", "alias": "name"},
+        {"name": "年龄", "alias": "age"}
+      ]
+
+      原文：
+      张三，男，毕业于某大学，今年28岁。
+
+      示例输出：
+      姓名；name；张三；张三...男
+      年龄；age；28岁；今年...岁
+            """;
 
   // static String intentRec = """
   // 你是一个智能信息系统助手，当前正在处理一个名为「{{kb_name}}」的数据库，数据库的主要功能是：【{{kb_des}}】。
@@ -675,17 +730,20 @@ public class KBFileService {
     kbCustomContentService.saveBatch(customContentList);
   }
 
-  static Pattern pattern = Pattern.compile("^(.+?)；(.+?)；(.+)$", Pattern.MULTILINE);
+  static Pattern pattern = Pattern.compile("^(.+?)；(.+?)；(.*?)；(.+)$", Pattern.MULTILINE);
 
   private List<KBCustomContent> parseToCustomContent(String inputText, long kbFileId, long kbId) {
     List<KBCustomContent> resultList = new ArrayList<>();
-
     Matcher matcher = pattern.matcher(inputText);
 
     while (matcher.find()) {
       String name = matcher.group(1).trim();
       String alias = matcher.group(2).trim();
-      String content = matcher.group(3).trim();
+      String contentRaw = matcher.group(3).trim();
+      String reference = matcher.group(4).trim();
+
+      // content = null 显式支持
+      String content = "null".equalsIgnoreCase(contentRaw) ? "无" : contentRaw;
 
       KBCustomContent contentObj = new KBCustomContent();
       contentObj.setName(name);
@@ -693,6 +751,10 @@ public class KBFileService {
       contentObj.setContent(content);
       contentObj.setKbId(kbId);
       contentObj.setKbFileId(kbFileId);
+      contentObj.setReference(reference);
+      // TODO 可根据需要自动识别类型为 str 或 list/number
+      // contentObj.setContentType("str");
+      contentObj.setIsDeleted(0);
 
       resultList.add(contentObj);
     }
